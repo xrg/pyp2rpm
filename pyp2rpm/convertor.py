@@ -58,12 +58,6 @@ class Convertor(object):
         self.proxy = proxy
         self.venv = venv
         self.autonc = autonc
-        self.pypi = True
-        suffix = os.path.splitext(self.package)[1]
-        if (os.path.exists(self.package)
-                and suffix in settings.ARCHIVE_SUFFIXES
-                and not os.path.isdir(self.package)):
-            self.pypi = False
 
     @property
     def template_base_py_ver(self):
@@ -179,21 +173,30 @@ class Convertor(object):
             NoSuchPackageException if the package is unknown on PyPI
         """
         if not hasattr(self, '_getter'):
-            if not self.pypi:
-                self._getter = package_getters.LocalFileGetter(
-                    self.package,
-                    self.save_dir)
-            else:
-                logger.debug(
-                    '{0} does not exist as local file trying PyPI.'.format(
-                        self.package))
+            try:
+                if (os.path.isfile(self.package)
+                        and self.package.endswith(settings.ARCHIVE_SUFFIXES)):
+                    self._getter = package_getters.LocalFileGetter(self.package,
+                                                                   self.save_dir)
+                    return self._getter
+            except exceptions.NoSuchPackageException:
+                pass
+
+            try:
+                self.init_client()
                 self._getter = package_getters.PypiDownloader(
                     self.client,
                     self.package,
                     self.version,
                     self.save_dir)
+            except exceptions.NoSuchPackageException:
+                pass
+
+            raise exceptions.NoSuchPackageException('No getter able to locate {0}'
+                                                    .format(self.package))
 
         return self._getter
+
 
     @property
     def local_file(self):
@@ -285,24 +288,22 @@ class Convertor(object):
         Returns:
             XMLRPC client for PyPI or None.
         """
+        if not hasattr(self, '_client'):
+            raise AttributeError('client')  # called before initialization
+
+        return self._client
+
+    def init_client(self):
         if self.proxy:
             proxyhandler = urllib.ProxyHandler({"http": self.proxy})
             opener = urllib.build_opener(proxyhandler)
             urllib.install_opener(opener)
             transport = ProxyTransport()
-        if not hasattr(self, '_client'):
-            transport = None
-            if self.pypi:
-                if self.proxy:
-                    logger.info('Using provided proxy: {0}.'.format(
-                        self.proxy))
-                self._client = xmlrpclib.ServerProxy(settings.PYPI_URL,
-                                                     transport=transport)
-                self._client_set = True
-            else:
-                self._client = None
-
-        return self._client
+        transport = None
+        if self.proxy:
+            logger.info('Using provided proxy: {0}.'.format(self.proxy))
+        self._client = xmlrpclib.ServerProxy(settings.PYPI_URL,
+                                             transport=transport)
 
 
 class ProxyTransport(xmlrpclib.Transport):
