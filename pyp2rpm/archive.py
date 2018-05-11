@@ -332,3 +332,162 @@ class Archive(object):
 
         return {'modules': sorted(set(modules)),
                 'scripts': sorted(set(scripts))}
+
+
+class LocalDir(object):
+    """Emulate Archive, from local directory.
+
+    """
+
+    def __init__(self, local_file):
+        self.path = local_file
+        self.name = os.path.basename(os.path.abspath(local_file))
+        self._cached_files = None   # will hold list of local files
+        self._cached_dirs = None    # will hold list of local dirs
+
+    def open(self):
+        if not os.path.isdir(self.path):
+            raise OSError(errno.EEXIST, "Path does not exist")
+
+        self._cached_files = []
+        self._cached_dirs = []
+        for dirpath, dirnames, filenames in os.walk(self.path):
+            if dirpath == self.path:
+                try:
+                    dirnames.remove('.git')
+                except ValueError:
+                    pass
+            if dirpath.startswith(self.path):
+                dirpath = dirpath[len(self.path):].lstrip(os.sep)
+            self._cached_dirs += [os.path.join(dirpath, d) for d in dirnames]
+            self._cached_files += [os.path.join(dirpath, f) for f in filenames]
+
+        return self
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, type, value, traceback):
+        self._cached_dirs = self._cached_files = None
+
+    def get_content_of_file(self, name, full_path=False):
+        """Returns content of file from archive.
+
+        If full_path is set to False and two files with given name exist,
+        content of one is returned (it is not specified which one that is).
+        If set to True, returns content of exactly that file.
+
+        Args:
+            name: name of the file to get content of
+        Returns:
+            Content of the file with given name or None, if no such.
+        """
+        raise NotImplementedError
+
+    def extract_file(self, name, full_path=False, directory="."):
+        """
+        """
+        raise NotImplementedError("why do that?")
+
+    def extract_all(self, directory=".", members=None):
+        """Extract all member from the archive to the specified working
+        directory.
+        """
+        raise NotImplementedError
+
+    def has_file_with_suffix(self, suffixes):
+        """Finds out if there is a file with one of suffixes in the archive.
+        Args:
+            suffixes: list of suffixes or single suffix to look for
+        Returns:
+            True if there is at least one file with at least one given suffix
+            in the archive, False otherwise (or archive can't be opened)
+        """
+        if not isinstance(suffixes, list):
+            suffixes = [suffixes]
+
+        suffixes = tuple(suffixes)
+        for fname in self._cached_files:
+            if fname.endswith(suffixes):
+                return True
+    
+
+        return False
+
+    def get_files_re(self, file_re, full_path=False, ignorecase=False):
+        """Finds all files that match file_re and returns their list.
+        Doesn't return directories, only files.
+
+        Args:
+            file_re: raw string to match files against (gets compiled into re)
+            full_path: whether to match against full path inside the archive
+            or just the filenames
+            ignorecase: whether to ignore case when using the given re
+        Returns:
+            List of full paths of files inside the archive that match the given
+            file_re.
+        """
+        try:
+            if ignorecase:
+                compiled_re = re.compile(file_re, re.I)
+            else:
+                compiled_re = re.compile(file_re)
+        except sre_constants.error:
+            logger.error("Failed to compile regex: {}.".format(file_re))
+            return []
+
+        found = []
+
+        for f in self._cached_files:
+            if full_path:
+                fs = f
+            else:
+                fs = os.path.basename(f)
+            if compiled_re.search(fs):
+                found.append(f)
+
+        return found
+
+    def get_directories_re(
+            self,
+            directory_re,
+            full_path=False,
+            ignorecase=False):
+        """Same as get_files_re, but for directories"""
+        if ignorecase:
+            compiled_re = re.compile(directory_re, re.I)
+        else:
+            compiled_re = re.compile(directory_re)
+
+        found = set()
+
+        for f in self._cached_dirs:
+            if full_path:
+                fs = f
+            else:
+                fs = os.path.basename(f)
+            if compiled_re.search(fs):
+                found.add(f)
+
+        return list(found)
+
+    @property
+    def top_directory(self):
+        """Return the name of the archive topmost directory."""
+        return self.name
+
+    @property
+    def json_wheel_metadata(self):
+        """Simple getter that get content of metadata.json file in .whl archive
+        Returns:
+            metadata from metadata.json or pydist.json in json format
+        """
+        for meta_file in ("metadata.json", "pydist.json"):
+            try:
+                return json.loads(self.get_content_of_file(meta_file))
+            except TypeError as err:
+                logger.warning(
+                    'Could not extract metadata from {}.'
+                    ' Error: {}'.format(meta_file, err))
+        raise RuntimeError("No wheel metadata found")
+

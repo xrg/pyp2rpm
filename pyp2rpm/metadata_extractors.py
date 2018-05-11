@@ -180,7 +180,10 @@ class LocalMetadataExtractor(object):
                  base_python_version=None,
                  metadata_extension=False):
         self.local_file = local_file
-        self.archive = archive.Archive(local_file)
+        if os.path.isdir(local_file):
+            self.archive = archive.LocalDir(local_file)
+        else:
+            self.archive = archive.Archive(local_file)
         self.name = name
         self.name_convertor = name_convertor
         self.version = version
@@ -311,21 +314,10 @@ class LocalMetadataExtractor(object):
         return archive_data
 
 
-class SetupPyMetadataExtractor(LocalMetadataExtractor):
+class _BaseSetupPyMetadataExtractor(LocalMetadataExtractor):
     """Class to extract metadata from setup.py using custom extract_dist
     command.
     """
-
-    def __init__(self, *args, **kwargs):
-        super(SetupPyMetadataExtractor, self).__init__(*args, **kwargs)
-
-        temp_dir = tempfile.mkdtemp()
-        try:
-            with self.archive as package_archive:
-                package_archive.extract_all(directory=temp_dir)
-                self.metadata = self._get_metadata(temp_dir)
-        finally:
-            shutil.rmtree(temp_dir)
 
     def _get_metadata(self, temp_dir):
         runner = SubprocessModuleRunner(
@@ -514,7 +506,7 @@ class SetupPyMetadataExtractor(LocalMetadataExtractor):
     def data_from_archive(self):
         """Appends setup.py specific metadata to archive_data."""
 
-        archive_data = super(SetupPyMetadataExtractor, self).data_from_archive
+        archive_data = super(_BaseSetupPyMetadataExtractor, self).data_from_archive
 
         archive_data['has_packages'] = self.has_packages
         archive_data['packages'] = self.packages
@@ -614,3 +606,33 @@ class WheelMetadataExtractor(LocalMetadataExtractor):
                 .get('python.details', {})
                 .get('document_names', {})
                 .values())
+
+
+class SetupPyMetadataExtractor(_BaseSetupPyMetadataExtractor):
+    def __init__(self, *args, **kwargs):
+        super(SetupPyMetadataExtractor, self).__init__(*args, **kwargs)
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            with self.archive as package_archive:
+                package_archive.extract_all(directory=temp_dir)
+                self.metadata = self._get_metadata(temp_dir)
+        finally:
+            shutil.rmtree(temp_dir)
+
+
+class LocalSetupPyExtractor(_BaseSetupPyMetadataExtractor):
+    """Class to extract metadata from setup.py using custom extract_dist
+    command.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(LocalSetupPyExtractor, self).__init__(*args, **kwargs)
+
+        with self.archive as package_archive:
+            self.metadata = self._get_metadata(self.archive.path)
+
+    def get_setup_py(self, directory):
+        return os.path.join(directory, 'setup.py')
+
+#eof

@@ -243,3 +243,23 @@ class LocalFileGetter(PackageGetter):
     @property
     def name(self):
         return self.get_name_version()[0]
+
+
+class SetupFileGetter(PackageGetter):
+    """Class for converting a local project, standard python structure
+    """
+    def __init__(self, local_dir, save_dir=None):
+        self.local_dir = local_dir
+        self.save_dir_init(save_dir)
+
+    def get_name_version(self):
+        return os.path.basename(os.path.abspath(self.local_dir)), None
+
+    def get(self):
+        return self.local_dir
+
+    @property
+    def name(self):
+        return self.get_name_version()[0]
+
+#eof

@@ -173,10 +173,20 @@ class Convertor(object):
             NoSuchPackageException if the package is unknown on PyPI
         """
         if not hasattr(self, '_getter'):
+            self._client = None
             try:
                 if (os.path.isfile(self.package)
                         and self.package.endswith(settings.ARCHIVE_SUFFIXES)):
                     self._getter = package_getters.LocalFileGetter(self.package,
+                                                                   self.save_dir)
+                    return self._getter
+            except exceptions.NoSuchPackageException:
+                pass
+
+            try:
+                if (os.path.isdir(self.package)
+                        and os.path.isfile(os.path.join(self.package, 'setup.py'))):
+                    self._getter = package_getters.SetupFileGetter(self.package,
                                                                    self.save_dir)
                     return self._getter
             except exceptions.NoSuchPackageException:
@@ -255,7 +265,10 @@ class Convertor(object):
             raise AttributeError("local_file attribute must be set before "
                                  "calling metadata_extractor")
         if not hasattr(self, '_metadata_extractor'):
-            if self.local_file.endswith('.whl'):
+            if os.path.isdir(self.local_file):
+                logger.info("Getting metadata from local directory using setup.py")
+                extractor_cls = metadata_extractors.LocalSetupPyExtractor
+            elif self.local_file.endswith('.whl'):
                 logger.info("Getting metadata from wheel using "
                             "WheelMetadataExtractor.")
                 extractor_cls = metadata_extractors.WheelMetadataExtractor
