@@ -48,6 +48,7 @@ class NameConvertor(object):
         Returns:
             Versioned name or the original name if given version is None.
         """
+        assert name, "No name supplied here"
         regexp = re.compile(r'^python(\d*|)-(.*)')
         auto_provides_regexp = re.compile(r'^python(\d*|)dist(.*)')
 
@@ -97,6 +98,7 @@ class NameConvertor(object):
         logger.debug("Converting name: {0} to rpm name, version: {1}.".format(
             name, python_version))
         rpmized_name = self.base_name(name)
+        assert rpmized_name
 
         rpmized_name = 'python-{0}'.format(rpmized_name)
 
