@@ -253,7 +253,10 @@ class SetupFileGetter(PackageGetter):
         self.save_dir_init(save_dir)
 
     def get_name_version(self):
-        return os.path.basename(os.path.abspath(self.local_dir)), None
+        name = os.path.basename(os.path.abspath(self.local_dir))
+        if name.startswith('python-'):
+            name = name[7:]
+        return name, None
 
     def get(self):
         return self.local_dir
